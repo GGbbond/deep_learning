@@ -1,0 +1,17 @@
+以下命令皆为YOLOV8环境下的命令:
+
+训练模型(输出模型为pytorch模型)
+# yolov8n-pose模型，迁移学习微调
+!yolo pose train data=Triangle_215.yaml model=yolov8n-pose.pt pretrained=True project=Triangle_215 name=n_pretrain epochs=50 batch=16 device=0
+# yolov8n-pose模型，随机初始权重，从头重新学习
+!yolo pose train data=Triangle_215.yaml model=yolov8n-pose.pt project=Triangle_215 name=n_scratch epochs=50 batch=16 device=0
+
+
+
+
+
+pytorch模型转onnx模型
+yolo export model=checkpoint/Triangle_215_yolov8l_pretrain.pt format=onnx
+
+pytorch模型转openvino模型
+yolo export model=checkpoint/Triangle_215_yolov8l_pretrain.pt format=openvino
