@@ -11,9 +11,15 @@ float nms_area_threshold = 0.5;
 
 //Configure constant parameters
 std::string IMAGE_PATH = "/home/fuziming/MA/Deep_learing/用openvino部署模型/3/0a1c6c12-3785.jpg";
+// std::string VIDOE_PATH = "/home/fuziming/MA/Deep_learing/用openvino部署模型/3/关灯-红方大能量机关-失败后激活成功的全激活过程.MP4";
+std::string VIDOE_PATH = "/home/fuziming/MA/Deep_learing/用openvino部署模型/3/关灯-蓝方大能量机关-全激活过程.MP4";
+std::string CAMERA_PATH = "0";
 std::string MODEL_PATH = "/home/fuziming/MA/Deep_learing/用openvino部署模型/3/model2/test2/weights/best_openvino_model/best.xml";
 std::string DEVICE = "GPU";
-cv::Mat img1 = cv::imread("/home/fuziming/MA/Deep_learing/用openvino部署模型/3/0a1c6c12-3785.jpg");
+cv::Mat img1;
+// img1 = cv::imread(IMAGE_PATH);
+cv::VideoCapture capture;
+
 
 
 
@@ -109,6 +115,19 @@ void letterbox(const cv::Mat& source, cv::Mat& result)
 
 
 int main() {
+
+	capture.open(VIDOE_PATH);
+	if (!capture.isOpened()) {
+		printf("could not load video data...\n");
+		return -1;
+	}
+
+	int frames = capture.get(cv::CAP_PROP_FRAME_COUNT);//获取视频针数目(一帧就是一张图片)
+	double fps = capture.get(cv::CAP_PROP_FPS);//获取每针视频的频率
+
+	// cv::namedWindow("video-demo", cv::WINDOW_AUTOSIZE);
+
+
 	//1.Create Runtime Core
 	ov::Core core;
 
@@ -118,120 +137,121 @@ int main() {
 	//3.Create inference request
 	ov::InferRequest infer_request = compiled_model.create_infer_request();
 
-	cv::Mat letterbox_img;
-	letterbox(img1,letterbox_img);
-	cv::imshow("letterbox_img1",letterbox_img);
-	float scale = letterbox_img.size[0] / 640.0;
-    cv::Mat blob = cv::dnn::blobFromImage(letterbox_img, 1.0 / 255.0, cv::Size(640, 640), cv::Scalar(), true);
 
 
-	auto input_port = compiled_model.input();
-
-    ov::Tensor input_tensor(input_port.get_element_type(), input_port.get_shape(), blob.ptr(0));
-
-    infer_request.set_input_tensor(input_tensor);
-
-	clock_t start_time, end_time;
-	start_time = clock();
-	infer_request.infer();
-	end_time = clock();
-	std::cout << "Inference Time:" << (double)(end_time - start_time) << "ms" << std::endl;
+	for(int i = 0; i < frames; i++)
+	{
+		capture >> img1;
+		cv::Mat letterbox_img;
+		letterbox(img1,letterbox_img);
+		// cv::imshow("letterbox_img1",letterbox_img);
+		float scale = letterbox_img.size[0] / 640.0;
+		cv::Mat blob = cv::dnn::blobFromImage(letterbox_img, 1.0 / 255.0, cv::Size(640, 640), cv::Scalar(), true);
 
 
+		auto input_port = compiled_model.input();
 
-	//Get output
-	auto output = infer_request.get_output_tensor(0);
-    auto output_shape = output.get_shape();
-    std::cout << "The shape of output tensor:" << output_shape << std::endl;
+		ov::Tensor input_tensor(input_port.get_element_type(), input_port.get_shape(), blob.ptr(0));
 
+		infer_request.set_input_tensor(input_tensor);
 
-    float* data = output.data<float>();
-    cv::Mat output_buffer(output_shape[1], output_shape[2], CV_32F, data);
-    transpose(output_buffer, output_buffer); //[8400,23]
-    std::vector<int> class_ids;
-    std::vector<float> class_scores;
-    std::vector<cv::Rect> boxes;
-    std::vector<std::vector<float>> objects_keypoints;
-
-	// std::cout<<output_buffer<<std::endl;
-	std::cout << "The shape of output tensor:" << output_shape << std::endl;
+		clock_t start_time, end_time;
+		start_time = clock();
+		infer_request.infer();
+		end_time = clock();
+		std::cout << "Inference Time:" << (double)(end_time - start_time) << "ms" << std::endl;
 
 
-	for (int i = 0; i < output_buffer.rows; i++) {
-        float class_score = output_buffer.at<float>(i, 4);
 
-        if (class_score > cof_threshold) {
-            class_scores.push_back(class_score);
-            class_ids.push_back(0); //{0:"person"}
-            float cx = output_buffer.at<float>(i, 0);
-            float cy = output_buffer.at<float>(i, 1);
-            float w = output_buffer.at<float>(i, 2);
-            float h = output_buffer.at<float>(i, 3);
-            // Get the box
-            int left = int((cx - 0.5 * w) * scale);
-            int top = int((cy - 0.5 * h) * scale);
-            int width = int(w * scale);
-            int height = int(h * scale);
-            // Get the keypoints
-            std::vector<float> keypoints;
-            cv::Mat kpts = output_buffer.row(i).colRange(8, 23);
-            for (int i = 0; i < 5; i++) {
-                float x = kpts.at<float>(0, i * 3 + 0) * scale;
-                float y = kpts.at<float>(0, i * 3 + 1) * scale;
-                float s = kpts.at<float>(0, i * 3 + 2);
-                keypoints.push_back(x);
-                keypoints.push_back(y);
-                keypoints.push_back(s);
-            }
-
-            boxes.push_back(cv::Rect(left, top, width, height));
-            objects_keypoints.push_back(keypoints);
-        	}
-    	}
-
-	// //test
-	// for (int i = 0; i < objects_keypoints.size(); i++) {       
-   	// 	for (int j = 0; j < objects_keypoints[i].size(); j++) {
-	// 		std::cout << objects_keypoints[i][j] << " ";
-   	// 	}
-    // 	std::cout << std::endl;
- 	// }
+		//Get output
+		auto output = infer_request.get_output_tensor(0);
+		auto output_shape = output.get_shape();
 
 
-    //NMS
-    std::vector<int> indices;
-    cv::dnn::NMSBoxes(boxes, class_scores, cof_threshold, nms_area_threshold, indices);
+		float* data = output.data<float>();
+		cv::Mat output_buffer(output_shape[1], output_shape[2], CV_32F, data);
+		transpose(output_buffer, output_buffer); //[8400,23]
+		std::vector<int> class_ids;
+		std::vector<float> class_scores;
+		std::vector<cv::Rect> boxes;
+		std::vector<std::vector<float>> objects_keypoints;
 
-	// std::cout<<indices.size()<<std::endl;
 
-    cv::Mat dst = img1.clone();
-    // -------- Visualize the detection results -----------
-    for (size_t i = 0; i < indices.size(); i++) {
-        int index = indices[i];
-        // Draw bounding box
-        cv::rectangle(dst, boxes[index], cv::Scalar(0, 0, 255), 2, 8);
-        std::string label = "RR:" + std::to_string(class_scores[index]).substr(0, 4);
-        cv::Size textSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, 0);
-        cv::Rect textBox(boxes[index].tl().x, boxes[index].tl().y - 15, textSize.width, textSize.height + 5);
-        cv::rectangle(dst, textBox, cv::Scalar(0, 0, 255), cv::FILLED);
-        cv::putText(dst, label, cv::Point(boxes[index].tl().x, boxes[index].tl().y - 5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255));
-        // Draw keypoints
-        //std::vector<float> object_keypoints = objects_keypoints[index];
-        //for (int i = 0; i < 17; i++)
-        //{
-        //    int x = std::clamp(int(object_keypoints[i * 3 + 0]), 0, dst.cols);
-        //    int y = std::clamp(int(object_keypoints[i * 3 + 1]), 0, dst.rows);
-        //    //Draw point
-        //    circle(dst, Point(x, y), 5, posePalette[i], -1);
-        //}
-        // Draw keypoints-line
 
-    }
-    // cv::Size shape = dst.size();
-    // plot_keypoints(dst, objects_keypoints, shape);
+		for (int i = 0; i < output_buffer.rows; i++) {
+			// float class_score = output_buffer.at<float>(i, 4);
+			float class_score = output_buffer.at<float>(i, 6);
 
-	cv::imshow("dst",dst);
-	cv::waitKey(0);
+
+			if (class_score > cof_threshold) {
+				class_scores.push_back(class_score);
+				class_ids.push_back(0); //{0:"person"}
+				float cx = output_buffer.at<float>(i, 0);
+				float cy = output_buffer.at<float>(i, 1);
+				float w = output_buffer.at<float>(i, 2);
+				float h = output_buffer.at<float>(i, 3);
+				// Get the box
+				int left = int((cx - 0.5 * w) * scale);
+				int top = int((cy - 0.5 * h) * scale);
+				int width = int(w * scale);
+				int height = int(h * scale);
+				// Get the keypoints
+				std::vector<float> keypoints;
+				cv::Mat kpts = output_buffer.row(i).colRange(8, 23);
+				for (int i = 0; i < 5; i++) {
+					float x = kpts.at<float>(0, i * 3 + 0) * scale;
+					float y = kpts.at<float>(0, i * 3 + 1) * scale;
+					float s = kpts.at<float>(0, i * 3 + 2);
+					keypoints.push_back(x);
+					keypoints.push_back(y);
+					keypoints.push_back(s);
+				}
+
+				boxes.push_back(cv::Rect(left, top, width, height));
+				objects_keypoints.push_back(keypoints);
+				}
+			}
+
+
+
+		//NMS
+		std::vector<int> indices;
+		cv::dnn::NMSBoxes(boxes, class_scores, cof_threshold, nms_area_threshold, indices);
+
+		cv::Mat dst = img1.clone();
+		// -------- Visualize the detection results -----------
+		for (size_t i = 0; i < indices.size(); i++) {
+			int index = indices[i];
+			// Draw bounding box
+			cv::rectangle(dst, boxes[index], cv::Scalar(0, 0, 255), 2, 8);
+			std::string label = "RR:" + std::to_string(class_scores[index]).substr(0, 4);
+			cv::Size textSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, 0);
+			cv::Rect textBox(boxes[index].tl().x, boxes[index].tl().y - 15, textSize.width, textSize.height + 5);
+			cv::rectangle(dst, textBox, cv::Scalar(0, 0, 255), cv::FILLED);
+			cv::putText(dst, label, cv::Point(boxes[index].tl().x, boxes[index].tl().y - 5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255));
+			// Draw keypoints
+			std::vector<float> object_keypoints = objects_keypoints[index];
+			for (int i = 0; i < 5; i++)
+			{
+			int x = std::clamp(int(object_keypoints[i * 3 + 0]), 0, dst.cols);
+			int y = std::clamp(int(object_keypoints[i * 3 + 1]), 0, dst.rows);
+			//Draw point
+			cv::circle(dst, cv::Point(x, y), 5, cv::Scalar(0,255,0), -1);
+			}
+			// Draw keypoints-line
+
+		}
+		// cv::Size shape = dst.size();
+		// plot_keypoints(dst, objects_keypoints, shape);
+		if (img1.empty())break;
+		cv::imshow("dst",dst);
+		// cv::waitKey(0);
+		if (cv::waitKey(1) >= 0) break;
+
+
+	}	
+
+	capture.release();
 
 	return 0;
 }
